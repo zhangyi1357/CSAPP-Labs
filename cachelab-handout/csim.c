@@ -1,3 +1,12 @@
+/*
+ * csim.c
+ *
+ * Author: Zhang Yi
+ *
+ * Cache simulation
+ *
+ */
+
 #include <assert.h>
 #include <getopt.h>
 #include <stdbool.h>
