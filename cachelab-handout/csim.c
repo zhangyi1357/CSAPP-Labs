@@ -6,7 +6,23 @@
 
 #include "cachelab.h"
 
+#define MAXN 256
+
+int hits = 0, misses = 0, evictions = 0;
+
 void cache_simulation(int s, int E, int b, FILE* fp, bool verbose) {
+    char c;
+    char buf[MAXN];
+    while ((c = fgetc(fp)) != EOF) {
+        fgets(buf, MAXN, fp);
+        switch (c) {
+            case ' ':
+                break;
+            default:
+                continue;
+        }
+        printf("%s", buf);
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -37,6 +53,7 @@ int main(int argc, char* argv[]) {
         }
     }
     cache_simulation(s, E, b, trace_fp, verbose);
-    printSummary(0, 0, 0);
+    fclose(trace_fp);
+    printSummary(hits, misses, evictions);
     return 0;
 }
