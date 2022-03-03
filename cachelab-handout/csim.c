@@ -14,17 +14,13 @@
 int hits = 0, misses = 0, evictions = 0;
 
 void cache_simulation(int s, int E, int b, FILE* fp, bool verbose) {
-    // malloc space for valid bits and set all bits to 0
+    // caculate the total line number
     size_t size_of_lines = (1 << s) * E;
-    size_t bytes_of_valid_bits = sizeof(char) * size_of_lines / 8 + 1;
-    char* valid_bits = malloc(bytes_of_valid_bits);
-    memset(valid_bits, 0, bytes_of_valid_bits);
-    printf("sizeof valid bits : %lu\n", sizeof(valid_bits));
 
     // malloc space for flags
-    unsigned* flags = malloc(sizeof(unsigned) * size_of_lines);
+    size_t* flags = malloc(sizeof(*flags) * size_of_lines);
 
-    // malloc space for lines frequency
+    // malloc space for lines frequency and set all to 0
     size_t* hit_times = malloc(sizeof(size_t) * size_of_lines);
     memset(hit_times, 0, sizeof(size_t) * size_of_lines);
 
@@ -38,52 +34,60 @@ void cache_simulation(int s, int E, int b, FILE* fp, bool verbose) {
         }
         // read the type and address
         char type;
-        size_t address;
-        fscanf(fp, "%c %lx", &type, &address);
-        fgets(buf, MAXN, fp);  // skip useless ", size" left in the line
+        size_t address, size;
+        fscanf(fp, "%c %lx, %lx", &type, &address, &size);
+        fgetc(fp);
         if (verbose)
-            printf("%c %lx%s", type, address, buf);
+            printf("%c %lx,%lx ", type, address, size);
 
         // decomposition of address
         //      flag          set_index   offset
         // bits M - (s + b)   s           b
-        size_t set_index = (address >> b) & ((1 << (s + 1)) - 1);
+        size_t set_index = (address >> b) & ((1 << s) - 1);
         size_t flag = address >> (s + b);
         size_t start_line_index = set_index * E;
 
-        size_t not_valid_bit_index = -1, i = 0;
+        // check for all the lines in the set
+        size_t least_hit_index = start_line_index, i;
         for (i = 0; i < E; ++i) {
             size_t index = start_line_index + i;
-            if (valid_bits[index / 8] & (1 << (index % 8))) {  // valid bit
-                if (flags[index] == flag)
-                    break;  // hit
-            } else {        // not valid bit
-                not_valid_bit_index = index;
-            }
+            if (hit_times[index] > 0 && flags[index] == flag)  // hit
+                break;
+            if (hit_times[index] < hit_times[least_hit_index])
+                least_hit_index = index;
         }
 
         if (i != E) {  // hit
             ++hits;
+            ++hit_times[start_line_index + i];
             if (verbose)
                 printf("hit");
-        } else if (not_valid_bit_index != -1) {  // empty line there
+        } else if (hit_times[least_hit_index] == 0) {  // empty line
             ++misses;
-            valid_bits[not_valid_bit_index / 8] |= (1 << (index % 8));
-            flags[not_valid_bit_index] = flag;
+            hit_times[least_hit_index] = 1;
+            flags[least_hit_index] = flag;
             if (verbose)
                 printf("miss");
-        } else {  // eviction here
+        } else {  // eviction
             ++misses;
             ++evictions;
+            hit_times[least_hit_index] = 1;
+            flags[least_hit_index] = flag;
+            if (verbose)
+                printf("miss eviction");
         }
-        if (type == M)
+        if (type == 'M') {
             ++hits;
+            if (verbose)
+                printf(" hit");
+        }
+        if (verbose)
+            printf(" \n");
 
         // printf("set index: %lx, flag: %lx\n", set_index, flag);
     }
 
     free(hit_times);
-    free(valid_bits);
     free(flags);
 }
 
@@ -115,7 +119,7 @@ int main(int argc, char* argv[]) {
         }
     }
     cache_simulation(s, E, b, trace_fp, verbose);
-    fclose(trace_fp);
+    // fclose(trace_fp);
     printSummary(hits, misses, evictions);
     return 0;
 }
