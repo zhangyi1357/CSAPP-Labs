@@ -112,6 +112,18 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
                 }
             }
         }
+    } else if (M == 61 && N == 67) {
+        for (int ii = 0; ii < N; ii += 16) {
+            for (int jj = 0; jj < M; jj += 16) {
+                for (int i = ii; i < ii + 16 && i < N; ++i) {
+                    for (int j = jj; j < jj + 16 && j < M; ++j) {
+                        B[j][i] = A[i][j];
+                    }
+                }
+            }
+        }
+    } else {
+        printf("Unsupported matrix size\n");
     }
 }
 
