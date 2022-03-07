@@ -60,6 +60,16 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
                 }
             }
         }
+    } else if (M == N && M == 64) {
+        for (int ii = 0; ii < 16; ++ii) {
+            for (int jj = 0; jj < 16; ++jj) {
+                for (int i = ii * 4; i < (ii + 1) * 4; ++i) {
+                    for (int j = jj * 4; j < (jj + 1) * 4; ++j) {
+                        B[i][j] = A[j][i];
+                    }
+                }
+            }
+        }
     }
 }
 
