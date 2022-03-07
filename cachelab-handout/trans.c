@@ -13,6 +13,8 @@
 
 #include "cachelab.h"
 
+// #define BLOCK_SIZE 8
+
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 
 /*
@@ -24,6 +26,20 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
  */
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
+    // int block_size = 4;
+    // int blocks_in_a_line = M / block_size;
+
+    if (M == N && M == 32) {
+        for (int ii = 0; ii < 4; ++ii) {
+            for (int jj = 0; jj < 4; ++jj) {
+                for (int i = ii * 8; i < (ii + 1) * 8; ++i) {
+                    for (int j = jj * 8; j < (jj + 1) * 8; ++j) {
+                        B[i][j] = A[j][i];
+                    }
+                }
+            }
+        }
+    }
 }
 
 /*
