@@ -32,9 +32,30 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
     if (M == N && M == 32) {
         for (int ii = 0; ii < 4; ++ii) {
             for (int jj = 0; jj < 4; ++jj) {
-                for (int i = ii * 8; i < (ii + 1) * 8; ++i) {
-                    for (int j = jj * 8; j < (jj + 1) * 8; ++j) {
-                        B[i][j] = A[j][i];
+                if (ii != jj) {
+                    for (int i = ii * 8; i < (ii + 1) * 8; ++i) {
+                        for (int j = jj * 8; j < (jj + 1) * 8; ++j) {
+                            B[i][j] = A[j][i];
+                        }
+                    }
+                } else {  // on the diagonal
+                    for (int i = ii * 8; i < (ii + 1) * 8; ++i) {
+                        int tmp0 = A[jj * 8 + 0][i];
+                        int tmp1 = A[jj * 8 + 1][i];
+                        int tmp2 = A[jj * 8 + 2][i];
+                        int tmp3 = A[jj * 8 + 3][i];
+                        int tmp4 = A[jj * 8 + 4][i];
+                        int tmp5 = A[jj * 8 + 5][i];
+                        int tmp6 = A[jj * 8 + 6][i];
+                        int tmp7 = A[jj * 8 + 7][i];
+                        B[i][jj * 8 + 0] = tmp0;
+                        B[i][jj * 8 + 1] = tmp1;
+                        B[i][jj * 8 + 2] = tmp2;
+                        B[i][jj * 8 + 3] = tmp3;
+                        B[i][jj * 8 + 4] = tmp4;
+                        B[i][jj * 8 + 5] = tmp5;
+                        B[i][jj * 8 + 6] = tmp6;
+                        B[i][jj * 8 + 7] = tmp7;
                     }
                 }
             }
