@@ -61,25 +61,54 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
             }
         }
     } else if (M == N && M == 64) {
-        for (int ii = 0; ii < 16; ++ii) {
-            for (int jj = 0; jj < 16; ++jj) {
-                if (ii != jj) {
-                    for (int i = ii * 4; i < (ii + 1) * 4; ++i) {
-                        for (int j = jj * 4; j < (jj + 1) * 4; ++j) {
-                            B[i][j] = A[j][i];
-                        }
-                    }
-                } else {
-                    for (int i = ii * 4; i < (ii + 1) * 4; ++i) {
-                        int tmp0 = A[jj * 4 + 0][i];
-                        int tmp1 = A[jj * 4 + 1][i];
-                        int tmp2 = A[jj * 4 + 2][i];
-                        int tmp3 = A[jj * 4 + 3][i];
-                        B[i][jj * 4 + 0] = tmp0;
-                        B[i][jj * 4 + 1] = tmp1;
-                        B[i][jj * 4 + 2] = tmp2;
-                        B[i][jj * 4 + 3] = tmp3;
-                    }
+        for (int ii = 0; ii < 64; ii += 8) {
+            for (int jj = 0; jj < 64; jj += 8) {
+                for (int x = 0; x < 4; ++x) {
+                    int tmp0 = A[ii + x][jj + 0];
+                    int tmp1 = A[ii + x][jj + 1];
+                    int tmp2 = A[ii + x][jj + 2];
+                    int tmp3 = A[ii + x][jj + 3];
+                    int tmp4 = A[ii + x][jj + 4];
+                    int tmp5 = A[ii + x][jj + 5];
+                    int tmp6 = A[ii + x][jj + 6];
+                    int tmp7 = A[ii + x][jj + 7];
+                    B[jj + 0][ii + x] = tmp0;
+                    B[jj + 1][ii + x] = tmp1;
+                    B[jj + 2][ii + x] = tmp2;
+                    B[jj + 3][ii + x] = tmp3;
+                    B[jj + 0][ii + x + 4] = tmp4;
+                    B[jj + 1][ii + x + 4] = tmp5;
+                    B[jj + 2][ii + x + 4] = tmp6;
+                    B[jj + 3][ii + x + 4] = tmp7;
+                }
+                for (int x = 0; x < 4; ++x) {
+                    int tmp0 = A[ii + 4][x + jj];
+                    int tmp1 = A[ii + 5][x + jj];
+                    int tmp2 = A[ii + 6][x + jj];
+                    int tmp3 = A[ii + 7][x + jj];
+                    int tmp4 = B[x + jj][ii + 4];
+                    int tmp5 = B[x + jj][ii + 5];
+                    int tmp6 = B[x + jj][ii + 6];
+                    int tmp7 = B[x + jj][ii + 7];
+
+                    B[x + jj][ii + 4] = tmp0;
+                    B[x + jj][ii + 5] = tmp1;
+                    B[x + jj][ii + 6] = tmp2;
+                    B[x + jj][ii + 7] = tmp3;
+                    B[x + jj + 4][ii] = tmp4;
+                    B[x + jj + 4][ii + 1] = tmp5;
+                    B[x + jj + 4][ii + 2] = tmp6;
+                    B[x + jj + 4][ii + 3] = tmp7;
+                }
+                for (int x = 0; x < 4; ++x) {
+                    int tmp0 = A[ii + x + 4][jj + 4];
+                    int tmp1 = A[ii + x + 4][jj + 5];
+                    int tmp2 = A[ii + x + 4][jj + 6];
+                    int tmp3 = A[ii + x + 4][jj + 7];
+                    B[jj + 4][ii + x + 4] = tmp0;
+                    B[jj + 5][ii + x + 4] = tmp1;
+                    B[jj + 6][ii + x + 4] = tmp2;
+                    B[jj + 7][ii + x + 4] = tmp3;
                 }
             }
         }
