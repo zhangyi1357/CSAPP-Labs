@@ -175,7 +175,6 @@ void eval(char* cmdline)
     int bg;              /* Should the job run in bg or fg? */
     pid_t pid;           /* Process id */
     sigset_t mask, prev;
-    struct job_t* job;
 
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
@@ -200,36 +199,15 @@ void eval(char* cmdline)
 
         addjob(jobs, pid, bg ? BG : FG, cmdline);
 
-        sigprocmask(SIG_UNBLOCK, &prev, NULL);  // unblock SIGCHLD
+        sigprocmask(SIG_SETMASK, &prev, NULL);  // unblock SIGCHLD
 
 
         /* Parent waits for foreground job to terminate */
-        if (!bg) {
-            int status;
-            if (waitpid(pid, &status, 0) < 0)
-                unix_error("waitfg: waitpid error");
-        }
-        else {
-            if ((job = getjobpid(jobs, pid)) != NULL)
-            {
-                printf("[%d] (%d) ", job->jid, job->pid);
-                switch (job->state) {
-                case BG:
-                    printf("Running ");
-                    break;
-                case FG:
-                    printf("Foreground ");
-                    break;
-                case ST:
-                    printf("Stopped ");
-                    break;
-                default:
-                    printf("listjobs: Internal error: job[%d].state=%d ",
-                        pid2jid(pid), job->state);
-                }
-                printf("%s", job->cmdline);
-            }
-        }
+        if (!bg)  // foreground
+            waitfg(pid);
+        else      // background
+            printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
+
     }
     return;
 }
@@ -334,6 +312,8 @@ void do_bgfg(char** argv)
  */
 void waitfg(pid_t pid)
 {
+    while (pid == fgpid(jobs))
+        sleep(0);
     return;
 }
 
@@ -352,12 +332,17 @@ void sigchld_handler(int sig)
 {
     int old_errno = errno;
 
-    int pid;
+    pid_t pid;
+    int status;
 
-    // get the pid of the terminated child
-    pid = waitpid(-1, NULL, WNOHANG | WUNTRACED);
-
-    deletejob(jobs, pid);
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+        if (WIFEXITED(status)) {
+            deletejob(jobs, pid);
+        }
+        else if (WIFSIGNALED(status)) {
+            deletejob(jobs, pid);
+        }
+    }
 
     errno = old_errno;
     return;
