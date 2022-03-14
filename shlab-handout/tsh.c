@@ -183,14 +183,13 @@ void eval(char* cmdline)
 
     Sigemptyset(&mask);
     Sigaddset(&mask, SIGCHLD);
-    Sigaddset(&mask, SIGINT);
-    Sigaddset(&mask, SIGSTOP);
 
     if (!builtin_cmd(argv)) {
         sigprocmask(SIG_BLOCK, &mask, &prev);  // block SIGCHLD
+
         if ((pid = fork()) == 0) {   /* Child runs user job */
-            setpgid(0, 0);
-            sigprocmask(SIG_UNBLOCK, &prev, NULL);  // unblock SIGCHLD
+            // setpgid(0, 0);
+            Sigprocmask(SIG_UNBLOCK, &prev, NULL);  // unblock SIGCHLD
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
@@ -199,7 +198,7 @@ void eval(char* cmdline)
 
         addjob(jobs, pid, bg ? BG : FG, cmdline);
 
-        sigprocmask(SIG_SETMASK, &prev, NULL);  // unblock SIGCHLD
+        Sigprocmask(SIG_SETMASK, &prev, NULL);  // unblock SIGCHLD
 
 
         /* Parent waits for foreground job to terminate */
@@ -339,9 +338,6 @@ void sigchld_handler(int sig)
         if (WIFEXITED(status)) {
             deletejob(jobs, pid);
         }
-        else if (WIFSIGNALED(status)) {
-            deletejob(jobs, pid);
-        }
     }
 
     errno = old_errno;
@@ -355,21 +351,15 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig)
 {
-    int max_jid, fg_pid;
+    int fg_pid;
+    fg_pid = fgpid(jobs);
 
-    fg_pid = 0;
-    max_jid = maxjid(jobs);
-    for (int i = 0; i < max_jid; ++i) {
-        if (jobs[i].state == FG) {
-            fg_pid = jobs[i].pid;
-            break;
-        }
-    }
-
-    if (fg_pid)
-        deletejob(jobs, fg_pid);
+    // delete the job from 
+    // if (fg_pid)
+    //     deletejob(jobs, fg_pid);
 
     kill(-fg_pid, SIGINT); // kill the group in the foreground
+
     return;
 }
 
