@@ -90,6 +90,18 @@ void Sigprocmask(int how, const sigset_t* set, sigset_t* oldset);
 void Sigemptyset(sigset_t* set);
 void Sigaddset(sigset_t* set, int signum);
 
+// Sio package declaration from csapp.h
+/* Sio (Signal-safe I/O) routines */
+ssize_t sio_puts(char s[]);
+ssize_t sio_putl(long v);
+void sio_error(char s[]);
+
+/* Sio wrappers */
+ssize_t Sio_puts(char s[]);
+ssize_t Sio_putl(long v);
+void Sio_error(char s[]);
+
+
 /*
  * main - The shell's main routine
  */
@@ -188,7 +200,7 @@ void eval(char* cmdline)
         sigprocmask(SIG_BLOCK, &mask, &prev);  // block SIGCHLD
 
         if ((pid = fork()) == 0) {   /* Child runs user job */
-            // setpgid(0, 0);
+            setpgid(0, 0);
             Sigprocmask(SIG_UNBLOCK, &prev, NULL);  // unblock SIGCHLD
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
@@ -303,6 +315,27 @@ int builtin_cmd(char** argv)
  */
 void do_bgfg(char** argv)
 {
+    struct job_t* job;
+    char* id = argv[1];
+    if (id[0] == '%') { // jid
+        job = getjobjid(jobs, atoi(id + 1));
+    }
+    else {              // pid
+        job = getjobpid(jobs, atoi(id));
+    }
+
+    kill(-(job->pid), SIGCONT);
+
+    if (!strcmp(argv[0], "fg")) {  // fg command
+        job->state = FG;
+        // wait for the job to terminate
+        waitfg(job->pid);
+    }
+    else {                         // bg command
+        job->state = BG;
+        printf("[%d] (%d) %s", pid2jid(job->pid), job->pid, job->cmdline);
+    }
+
     return;
 }
 
@@ -338,6 +371,26 @@ void sigchld_handler(int sig)
         if (WIFEXITED(status)) {
             deletejob(jobs, pid);
         }
+        if (WIFSIGNALED(status)) { // terminated by ctrl-c
+            Sio_puts("Job [");
+            Sio_putl(pid2jid(pid));
+            Sio_puts("] (");
+            Sio_putl(pid);
+            Sio_puts(") terminated by signal ");
+            Sio_putl(WTERMSIG(status));
+            Sio_puts("\n");
+            deletejob(jobs, pid);
+        }
+        if (WIFSTOPPED(status)) { // stopped by ctrl-z
+            Sio_puts("Job [");
+            Sio_putl(pid2jid(pid));
+            Sio_puts("] (");
+            Sio_putl(pid);
+            Sio_puts(") stopped by signal ");
+            Sio_putl(WSTOPSIG(status));
+            Sio_puts("\n");
+            getjobpid(jobs, pid)->state = ST;
+        }
     }
 
     errno = old_errno;
@@ -351,15 +404,16 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig)
 {
-    int fg_pid;
+    int olderrno = errno;
+
+    // get the foreground job pid
+    pid_t fg_pid;
     fg_pid = fgpid(jobs);
 
-    // delete the job from 
-    // if (fg_pid)
-    //     deletejob(jobs, fg_pid);
+    // kill the group in the foreground
+    kill(-fg_pid, sig);
 
-    kill(-fg_pid, SIGINT); // kill the group in the foreground
-
+    errno = olderrno;
     return;
 }
 
@@ -370,19 +424,16 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
-    int max_jid, fg_pid;
+    int olderrno = errno;
 
-    fg_pid = 0;
-    max_jid = maxjid(jobs);
-    for (int i = 0; i < max_jid; ++i) {
-        if (jobs[i].state == FG) {
-            jobs[i].state = ST;
-            fg_pid = jobs[i].pid;
-            break;
-        }
-    }
+    // get the foreground job pid
+    pid_t fg_pid;
+    fg_pid = fgpid(jobs);
 
-    kill(-fg_pid, SIGSTOP); // kill the group in the foreground
+    // kill the group in the foreground
+    kill(-fg_pid, sig);
+
+    errno = olderrno;
     return;
 }
 
@@ -605,6 +656,13 @@ void sigquit_handler(int sig)
     exit(1);
 }
 
+
+// The following function are from csapp.c
+
+/*************************************************************
+ * Wrappers for blocking signals
+ *************************************************************/
+
 void Sigemptyset(sigset_t* set)
 {
     if (sigemptyset(set) < 0)
@@ -624,4 +682,104 @@ void Sigaddset(sigset_t* set, int signum)
     if (sigaddset(set, signum) < 0)
         unix_error("Sigaddset error");
     return;
+}
+
+/*************************************************************
+ * The Sio (Signal-safe I/O) package - simple reentrant output
+ * functions that are safe for signal handlers.
+ *************************************************************/
+
+ /* Private sio functions */
+
+ /* $begin sioprivate */
+ /* sio_reverse - Reverse a string (from K&R) */
+static void sio_reverse(char s[])
+{
+    int c, i, j;
+
+    for (i = 0, j = strlen(s) - 1; i < j; i++, j--) {
+        c = s[i];
+        s[i] = s[j];
+        s[j] = c;
+    }
+}
+
+/* sio_ltoa - Convert long to base b string (from K&R) */
+static void sio_ltoa(long v, char s[], int b)
+{
+    int c, i = 0;
+    int neg = v < 0;
+
+    if (neg)
+        v = -v;
+
+    do {
+        s[i++] = ((c = (v % b)) < 10) ? c + '0' : c - 10 + 'a';
+    } while ((v /= b) > 0);
+
+    if (neg)
+        s[i++] = '-';
+
+    s[i] = '\0';
+    sio_reverse(s);
+}
+
+/* sio_strlen - Return length of string (from K&R) */
+static size_t sio_strlen(char s[])
+{
+    int i = 0;
+
+    while (s[i] != '\0')
+        ++i;
+    return i;
+}
+/* $end sioprivate */
+
+/* Public Sio functions */
+/* $begin siopublic */
+
+ssize_t sio_puts(char s[]) /* Put string */
+{
+    return write(STDOUT_FILENO, s, sio_strlen(s)); //line:csapp:siostrlen
+}
+
+ssize_t sio_putl(long v) /* Put long */
+{
+    char s[128];
+
+    sio_ltoa(v, s, 10); /* Based on K&R itoa() */  //line:csapp:sioltoa
+    return sio_puts(s);
+}
+
+void sio_error(char s[]) /* Put error message and exit */
+{
+    sio_puts(s);
+    _exit(1);                                      //line:csapp:sioexit
+}
+/* $end siopublic */
+
+/*******************************
+ * Wrappers for the SIO routines
+ ******************************/
+ssize_t Sio_putl(long v)
+{
+    ssize_t n;
+
+    if ((n = sio_putl(v)) < 0)
+        sio_error("Sio_putl error");
+    return n;
+}
+
+ssize_t Sio_puts(char s[])
+{
+    ssize_t n;
+
+    if ((n = sio_puts(s)) < 0)
+        sio_error("Sio_puts error");
+    return n;
+}
+
+void Sio_error(char s[])
+{
+    sio_error(s);
 }
