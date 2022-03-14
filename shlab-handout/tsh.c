@@ -310,6 +310,16 @@ int builtin_cmd(char** argv)
     return 0;
 }
 
+// check if arg is a string of nums
+int checkNum(char* arg) {
+    int len = strlen(arg);
+    for (int i = 0; i < len; ++i) {
+        if (!isdigit(arg[i])) // not num
+            return 0;
+    }
+    return 1;
+}
+
 /*
  * do_bgfg - Execute the builtin bg and fg commands
  */
@@ -317,11 +327,37 @@ void do_bgfg(char** argv)
 {
     struct job_t* job;
     char* id = argv[1];
+
+    // no argument for bg/fg
+    if (id == NULL)
+    {
+        printf("%s command requires PID or %%jobid argument\n", argv[0]);
+        return;
+    }
+
     if (id[0] == '%') { // jid
-        job = getjobjid(jobs, atoi(id + 1));
+        if (!checkNum(id + 1)) {
+            printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+        int jid = atoi(id + 1);
+        job = getjobjid(jobs, jid);
+        if (job == NULL) {
+            printf("%%%d: No such job\n", jid);
+            return;
+        }
     }
     else {              // pid
-        job = getjobpid(jobs, atoi(id));
+        if (!checkNum(id)) {
+            printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+            return;
+        }
+        int pid = atoi(id);
+        job = getjobpid(jobs, pid);
+        if (job == NULL) {
+            printf("(%d): No such process\n", pid);
+            return;
+        }
     }
 
     kill(-(job->pid), SIGCONT);
