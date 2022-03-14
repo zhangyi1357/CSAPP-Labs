@@ -204,7 +204,7 @@ void eval(char* cmdline)
             Sigprocmask(SIG_UNBLOCK, &prev, NULL);  // unblock SIGCHLD
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
-                exit(0);
+                _exit(1);
             }
         }
 
