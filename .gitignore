@@ -10,4 +10,8 @@ cachelab-handout/trace*
 
 *.tar
 
+!*/Makefile
+
+!*/README
+
 .o
