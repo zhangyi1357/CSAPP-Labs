@@ -1,11 +1,13 @@
-*.[oa]
+*
 
-**/.vscode/
+!*.*
 
-**/.*
+!*/
 
-*.out
+.*
+
+cachelab-handout/trace*
 
 *.tar
 
-cachelab-handout/trace*
+.o
