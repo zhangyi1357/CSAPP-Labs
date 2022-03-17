@@ -14,4 +14,4 @@ cachelab-handout/trace*
 
 !*/README
 
-.o
+*.o
