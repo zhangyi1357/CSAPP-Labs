@@ -74,6 +74,7 @@ team_t team = {
 
 /* Global variables */
 static char* heap_listp = 0;  /* Pointer to first block */
+#define NEXT_FIT
 #ifdef NEXT_FIT
 static char* rover;           /* Next fit rover */
 #endif
