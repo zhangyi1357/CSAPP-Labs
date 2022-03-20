@@ -107,10 +107,10 @@ int mm_init(void)
     // add a dummy block for simplification
     PUT(freep, 0);                           // null for alignment
 
-    freep += 2 * WSIZE;
+    freep += DSIZE;
     dummy_head = freep;
-    PUT(HDRP(freep), PACK(4 * WSIZE, 1));
-    PUT(FTRP(freep), PACK(4 * WSIZE, 1));
+    PUT(HDRP(freep), PACK(2 * DSIZE, 1));
+    PUT(FTRP(freep), PACK(2 * DSIZE, 1));
     PUT(NEXT(freep), (unsigned)freep);
     PUT(PREV(freep), (unsigned)freep);
 
@@ -124,6 +124,7 @@ int mm_init(void)
     // let the freep pointer points to the first useful block
     freep = GET(NEXT(dummy_head));
 
+    // checkheap(1);
     return 0;
 }
 
@@ -133,6 +134,7 @@ int mm_init(void)
  */
 void* mm_malloc(size_t size)
 {
+    // checkheap(1);
     size_t asize;      /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
     char* bp;
@@ -172,6 +174,7 @@ void* mm_malloc(size_t size)
  */
 void mm_free(void* bp)
 {
+    // checkheap(1);
     // ignore spurious requests
     if (bp == 0)
         return;
@@ -290,6 +293,7 @@ static void* coalesce(void* bp)
  */
 void* mm_realloc(void* ptr, size_t size)
 {
+    // checkheap(1);
     size_t oldsize;
     void* newptr;
 
@@ -381,8 +385,6 @@ static void place(void* bp, size_t asize)
         PUT(PREV(bp), (unsigned)prevp);
         PUT(NEXT(prevp), (unsigned)bp);
         PUT(PREV(nextp), (unsigned)bp);
-
-        freep = bp;
     }
     else {
         PUT(HDRP(bp), PACK(csize, 1));
@@ -391,9 +393,8 @@ static void place(void* bp, size_t asize)
         // set all the pointers in EFL
         PUT(NEXT(prevp), (unsigned)nextp);
         PUT(PREV(nextp), (unsigned)prevp);
-
-        freep = GET(NEXT(dummy_head));
     }
+    freep = GET(NEXT(dummy_head));
 }
 /* $end mmplace */
 
@@ -416,7 +417,7 @@ static void printblock(void* bp)
 {
     size_t hsize, halloc, fsize, falloc;
 
-    checkheap(0);
+    // checkheap(0);
     hsize = GET_SIZE(HDRP(bp));
     halloc = GET_ALLOC(HDRP(bp));
     fsize = GET_SIZE(FTRP(bp));
@@ -427,7 +428,8 @@ static void printblock(void* bp)
         return;
     }
 
-    printf("%p: header: [%u:%c] footer: [%u:%c]\n", bp,
+    printf("%p: next:[%p] prev:[%p] header: [%u:%c] footer: [%u:%c]\n", bp,
+        GET(NEXT(bp)), GET(PREV(bp)),
         hsize, (halloc ? 'a' : 'f'),
         fsize, (falloc ? 'a' : 'f'));
 }
@@ -438,6 +440,8 @@ static void checkblock(void* bp)
         printf("Error: %p is not doubleword aligned\n", bp);
     if (GET(HDRP(bp)) != GET(FTRP(bp)))
         printf("Error: header does not match footer\n");
+    if (GET_ALLOC(bp))
+        printf("Error: block in the free list is not free\n");
 }
 
 /*
@@ -445,25 +449,22 @@ static void checkblock(void* bp)
  */
 void checkheap(int verbose)
 {
-    char* bp = freep;
-
     if (verbose)
-        printf("Heap (%p):\n", freep);
+        printf("Heap (%p):\n", dummy_head);
 
-    if ((GET_SIZE(HDRP(freep)) != DSIZE) || !GET_ALLOC(HDRP(freep)))
-        printf("Bad prologue header\n");
-    checkblock(freep);
+    checkblock(dummy_head);
+    if (verbose) {
+        printblock(dummy_head);
+    }
 
-    for (bp = freep; GET_SIZE(HDRP(bp)) > 0; bp = GET(NEXT(bp))) {
+    if (freep != GET(NEXT(dummy_head)))
+        printf("freep != get(next(dummy_dead))\n");
+
+    for (char* bp = freep; bp != dummy_head; bp = GET(NEXT(bp))) {
         if (verbose)
             printblock(bp);
         checkblock(bp);
     }
-
-    if (verbose)
-        printblock(bp);
-    if ((GET_SIZE(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp))))
-        printf("Bad epilogue header\n");
 }
 
 void print_freelist() {
