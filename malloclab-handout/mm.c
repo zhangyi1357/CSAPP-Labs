@@ -124,7 +124,6 @@ int mm_init(void)
     // let the freep pointer points to the first useful block
     freep = GET(NEXT(dummy_head));
 
-    // checkheap(1);
     return 0;
 }
 
@@ -293,34 +292,33 @@ static void* coalesce(void* bp)
  */
 void* mm_realloc(void* ptr, size_t size)
 {
-    // checkheap(1);
     size_t oldsize;
     void* newptr;
 
-    /* If size == 0 then this is just free, and we return NULL. */
+    // If size == 0 then this is just free, and we return NULL.
     if (size == 0) {
         mm_free(ptr);
         return 0;
     }
 
-    /* If oldptr is NULL, then this is just malloc. */
+    // If oldptr is NULL, then this is just malloc.
     if (ptr == NULL) {
         return mm_malloc(size);
     }
 
     newptr = mm_malloc(size);
 
-    /* If realloc() fails the original block is left untouched  */
+    // If realloc() fails the original block is left untouched 
     if (!newptr) {
         return 0;
     }
 
-    /* Copy the old data. */
+    // Copy the old data.
     oldsize = GET_SIZE(HDRP(ptr));
     if (size < oldsize) oldsize = size;
     memcpy(newptr, ptr, oldsize);
 
-    /* Free the old block. */
+    // Free the old block.
     mm_free(ptr);
 
     return newptr;
@@ -359,7 +357,7 @@ static void* extend_heap(size_t words)
     // Coalesce if the previous block was free 
     return coalesce(bp);
 }
-/* $end mmextendheap */
+
 
 /*
  * place - Place block of asize bytes at start of free block bp
@@ -396,21 +394,20 @@ static void place(void* bp, size_t asize)
     }
     freep = GET(NEXT(dummy_head));
 }
-/* $end mmplace */
 
 /*
  * find_fit - Find a fit for a block with asize bytes
  */
 static void* find_fit(size_t asize)
 {
-    /* First-fit search */
+    // First-fit search 
     char* bp;
     for (bp = freep; bp != dummy_head; bp = GET(NEXT(bp))) {
         if (GET_SIZE(HDRP(bp)) >= asize)
             return bp;
     }
 
-    return NULL; /* No fit */
+    return NULL; // No fit
 }
 
 static void printblock(void* bp)
