@@ -78,9 +78,9 @@ team_t team = {
 #define PREV(bp)       ((char *) (bp) + WSIZE)
 
 /* Global variables */
-#define HEAD_SIZE(n) head_size##n
-#define GENERATE_HEAD(n) static char* HEAD_SIZE(n) = NULL
-
+static char* heap_listp = NULL;
+static char* heap_listendp = NULL;
+static char* dummy_head = NULL;
 
 /* Function prototypes for internal helper routines */
 static void* extend_heap(size_t words);
@@ -91,35 +91,40 @@ static void printblock(void* bp);
 static void checkheap(int verbose);
 static void checkblock(void* bp);
 static void print_freelist();
-
+static void insert_block(void* bp, int size);
+void detach_block(void* bp);
 /*
  * mm_init - Initialize the memory manager
  */
 int mm_init(void)
 {
     // Create the initial empty heap
-    if ((freep = mem_sbrk(3 * DSIZE)) == (void*)-1)
+    if ((heap_listp = mem_sbrk(14 * DSIZE)) == (void*)-1)
         return -1;
 
-    // add a dummy block for simplification
-    PUT(freep, 0);                           // null for alignment
+    // null for alignment
+    PUT(heap_listp + (0 * WSIZE), 0);  // block size <= 16
+    PUT(heap_listp + (1 * WSIZE), 0);  // block size <= 32
+    PUT(heap_listp + (2 * WSIZE), 0);  // block size <= 64
+    PUT(heap_listp + (3 * WSIZE), 0);  // block size <= 128
+    PUT(heap_listp + (4 * WSIZE), 0);  // block size <= 256
+    PUT(heap_listp + (5 * WSIZE), 0);  // block size <= 512
+    PUT(heap_listp + (6 * WSIZE), 0);  // block size <= 1024
+    PUT(heap_listp + (7 * WSIZE), 0);  // block size <= 2048
+    PUT(heap_listp + (8 * WSIZE), 0);  // block size <= 4096
+    PUT(heap_listp + (9 * WSIZE), 0);  // block size > 4096
 
-    freep += DSIZE;
-    dummy_head = freep;
-    PUT(HDRP(freep), PACK(2 * DSIZE, 1));
-    PUT(FTRP(freep), PACK(2 * DSIZE, 1));
-    PUT(NEXT(freep), (unsigned)freep);
-    PUT(PREV(freep), (unsigned)freep);
+    heap_listendp = heap_listp + (10 * WSIZE); // indicate where the list ends
 
-    PUT(HDRP(NEXT_BLKP(freep)), PACK(0, 1)); // null for alignment
+    dummy_head = heap_listp + (11 * WSIZE);
+    PUT(HDRP(dummy_head), PACK(DSIZE, 1));         // prologue header
+    PUT(FTRP(dummy_head), PACK(DSIZE, 1));         // prologue footer
 
+    PUT(HDRP(NEXT_BLKP(dummy_head)), PACK(0, 1));  // epilogue header
 
     // extend the heap to CHUNKSIZE
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
-
-    // let the freep pointer points to the first useful block
-    freep = GET(NEXT(dummy_head));
 
     return 0;
 }
@@ -136,11 +141,11 @@ void* mm_malloc(size_t size)
     char* bp;
 
     // check init status
-    if (freep == 0)
+    if (dummy_head == NULL)
         mm_init();
 
     // ignore spurious requests
-    if (size == 0)
+    if (size == NULL)
         return NULL;
 
     // Adjust block size to include overhead and alignment reqs.
@@ -179,7 +184,7 @@ void mm_free(void* bp)
     size_t size = GET_SIZE(HDRP(bp));
 
     // check init status
-    if (freep == 0)
+    if (dummy_head == 0)
         mm_init();
 
     PUT(HDRP(bp), PACK(size, 0));
@@ -199,88 +204,51 @@ static void* coalesce(void* bp)
     size_t size = GET_SIZE(HDRP(bp));
 
     if (prev_alloc && next_alloc) {            // Case 1
-        // insert the current block between dummy_head and freep
-        PUT(NEXT(bp), (unsigned)freep);
-        PUT(PREV(bp), (unsigned)dummy_head);
-
-        PUT(NEXT(dummy_head), (unsigned)bp);
-        PUT(PREV(freep), (unsigned)bp);
-
-        // size already right
+        // insert the current block between dummy_head and dummy_head
+        insert_block(bp, size);
+        return bp;
     }
     else if (prev_alloc && !next_alloc) {      // Case 2 
         // detach next block from the EFL
         char* next_block = NEXT_BLKP(bp);
-
-        PUT(NEXT(GET(PREV(next_block))), GET(NEXT(next_block)));
-        PUT(PREV(GET(NEXT(next_block))), GET(PREV(next_block)));
-
-        freep = GET(NEXT(dummy_head));
-
-        // insert the current block and next block between dummy_head and freep
-        PUT(NEXT(bp), (unsigned)freep);
-        PUT(PREV(bp), (unsigned)dummy_head);
-
-        PUT(NEXT(dummy_head), (unsigned)bp);
-        PUT(PREV(freep), (unsigned)bp);
-
+        detach_block(next_block);
 
         // set the size of the combined block
         size += GET_SIZE(HDRP(next_block));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
 
+        insert_block(bp, size);
+        return bp;
     }
     else if (!prev_alloc && next_alloc) {      // Case 3 
         // detach the previous block from the EFL
         char* prev_block = PREV_BLKP(bp);
-        PUT(NEXT(GET(PREV(prev_block))), GET(NEXT(prev_block)));
-        PUT(PREV(GET(NEXT(prev_block))), GET(PREV(prev_block)));
-
-        freep = GET(NEXT(dummy_head));
-
-        // insert current block and prev block between dummy_head and freep
-        bp = prev_block;
-        PUT(NEXT(bp), (unsigned)freep);
-        PUT(PREV(bp), (unsigned)dummy_head);
-
-        PUT(NEXT(dummy_head), (unsigned)bp);
-        PUT(PREV(freep), (unsigned)bp);
+        detach_block(prev_block);
 
         // set the size of the combined block
         size += GET_SIZE(HDRP(prev_block));
-        PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(prev_block), PACK(size, 0));
+        PUT(FTRP(prev_block), PACK(size, 0));
+
+        insert_block(prev_block, size);
+        return prev_block;
     }
     else {                                     // Case 4
         // detach both next and prev block from the EFL
         char* prev_block = PREV_BLKP(bp);
         char* next_block = NEXT_BLKP(bp);
-        PUT(NEXT(GET(PREV(next_block))), GET(NEXT(next_block)));
-        PUT(PREV(GET(NEXT(next_block))), GET(PREV(next_block)));
-        PUT(NEXT(GET(PREV(prev_block))), GET(NEXT(prev_block)));
-        PUT(PREV(GET(NEXT(prev_block))), GET(PREV(prev_block)));
-
-        freep = GET(NEXT(dummy_head));
-
-        // insert the combined block between dummy_head and freep
-        bp = prev_block;
-        PUT(NEXT(bp), (unsigned)freep);
-        PUT(PREV(bp), (unsigned)dummy_head);
-
-        PUT(NEXT(dummy_head), (unsigned)bp);
-        PUT(PREV(freep), (unsigned)bp);
+        detach_block(prev_block);
+        detach_block(next_block);
 
         // set the size of the combined block
         size += GET_SIZE(HDRP(prev_block)) + GET_SIZE(HDRP(next_block));
-        PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(prev_block), PACK(size, 0));
+        PUT(FTRP(prev_block), PACK(size, 0));
+
+        insert_block(prev_block, size);
+        return prev_block;
     }
-
-    freep = GET(NEXT(dummy_head));
-
-
-    return bp;
 }
 
 
@@ -351,6 +319,8 @@ static void* extend_heap(size_t words)
     PUT(FTRP(bp), PACK(size, 0));
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
 
+    insert_block(bp, size);
+
     // Coalesce if the previous block was free 
     return coalesce(bp);
 }
@@ -363,33 +333,28 @@ static void* extend_heap(size_t words)
 static void place(void* bp, size_t asize)
 {
     size_t csize = GET_SIZE(HDRP(bp));
-    void* prevp = GET(PREV(bp));
-    void* nextp = GET(NEXT(bp));
+
+    // detach the whole block
+    detach_block(bp);
 
     if ((csize - asize) >= (2 * DSIZE)) {
+        // set the used block as allocated
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
 
+        // set the remaining block as free
         bp = NEXT_BLKP(bp);
+        int remain_size = csize - asize;
+        PUT(HDRP(bp), PACK(remain_size, 0));
+        PUT(FTRP(bp), PACK(remain_size, 0));
 
-        PUT(HDRP(bp), PACK(csize - asize, 0));
-        PUT(FTRP(bp), PACK(csize - asize, 0));
-
-        // set all the pointers in EFL
-        PUT(NEXT(bp), (unsigned)nextp);
-        PUT(PREV(bp), (unsigned)prevp);
-        PUT(NEXT(prevp), (unsigned)bp);
-        PUT(PREV(nextp), (unsigned)bp);
+        // insert it in the right place
+        insert_block(bp, remain_size);
     }
     else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
-
-        // set all the pointers in EFL
-        PUT(NEXT(prevp), (unsigned)nextp);
-        PUT(PREV(nextp), (unsigned)prevp);
     }
-    freep = GET(NEXT(dummy_head));
 }
 
 /*
@@ -398,10 +363,12 @@ static void place(void* bp, size_t asize)
 static void* find_fit(size_t asize)
 {
     // First-fit search 
-    char* bp;
-    for (bp = freep; bp != dummy_head; bp = GET(NEXT(bp))) {
-        if (GET_SIZE(HDRP(bp)) >= asize)
-            return bp;
+    char* head;
+    for (head = get_head(asize); head != dummy_head; head = head + WSIZE) {
+        for (char* bp = GET(head); bp != NULL; bp = GET(NEXT(bp))) {
+            if (GET_SIZE(HDRP(bp)) >= asize)
+                return bp;
+        }
     }
 
     return NULL; // No fit
@@ -451,10 +418,10 @@ void checkheap(int verbose)
         printblock(dummy_head);
     }
 
-    if (freep != GET(NEXT(dummy_head)))
-        printf("freep != get(next(dummy_dead))\n");
+    if (dummy_head != GET(NEXT(dummy_head)))
+        printf("dummy_head != get(next(dummy_dead))\n");
 
-    for (char* bp = freep; bp != dummy_head; bp = GET(NEXT(bp))) {
+    for (char* bp = dummy_head; bp != dummy_head; bp = GET(NEXT(bp))) {
         if (verbose)
             printblock(bp);
         checkblock(bp);
@@ -471,9 +438,32 @@ void print_freelist() {
 }
 
 
+void* get_head(int size) {
+    assert(size >= 8 && size % 8 == 0);
+    int n = 0;
+    size = size >> 4;
+    while (size != 0) {
+        n += 1;
+        size = size >> 1;
+    }
+    return heap_listp + n * WSIZE;
+}
 
+void insert_block(void* bp, int size) {
+    assert(bp != NULL && size >= 8 && size % 8 == 0);
+    void* head = get_head(size);
+    PUT(NEXT(bp), GET(head));
+    PUT(PREV(bp), NULL);
+    PUT(head, bp);
+}
 
-
+void detach_block(void* bp) {
+    char* prev = GET(PREV(bp));
+    char* next = GET(NEXT(bp));
+    PUT(NEXT(prev), next);
+    if (next != NULL)
+        PUT(PREV(next), prev);
+}
 
 
 
