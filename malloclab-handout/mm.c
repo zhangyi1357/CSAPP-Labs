@@ -78,12 +78,9 @@ team_t team = {
 #define PREV(bp)       ((char *) (bp) + WSIZE)
 
 /* Global variables */
-static char* freep = 0;  /* Pointer to first free block */
-static char* dummy_head = 0;
-// #define NEXT_FIT
-#ifdef NEXT_FIT
-static char* rover;           /* Next fit rover */
-#endif
+#define HEAD_SIZE(n) head_size##n
+#define GENERATE_HEAD(n) static char* HEAD_SIZE(n) = NULL
+
 
 /* Function prototypes for internal helper routines */
 static void* extend_heap(size_t words);
