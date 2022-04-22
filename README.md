@@ -9,6 +9,6 @@ Lab solutions for CSAPP (CMU 15-213)
 | bomb/             | Bomb Lab                           |
 | cachelab-handout/ | Cache Lab                          |
 | code/             | Examples code from the CS:APP book |
+| malloclab-handout/| Malloc Lab                         |
 | shlab-handout/    | Shell Lab                          |
 | target1/          | Attack Lab                         |
-
